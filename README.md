@@ -199,3 +199,11 @@ alias mygoqsub='goqsub --cpu 4 --queue sci.q -P myproject'
 mygoqsub --i my_script.sh
 ```
 
+# 发布版本
+
+发布新版本时，执行以下命令：
+
+```bash
+version="v0.0.2" && \
+git add -A && git commit -m $version && git tag $version && git push origin main && git push origin $version
+```

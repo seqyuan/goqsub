@@ -44,10 +44,22 @@ func main() {
 	mem := *opt_mem
 	h_vmem := *opt_h_vmem
 	queue := ""
-	if opt_queue != nil && *opt_queue != "" {
-		// Clean up queue string: trim whitespace and trailing commas
-		queue = strings.TrimSpace(*opt_queue)
-		queue = strings.TrimRight(queue, ", \t")
+	if opt_queue != nil {
+		rawQueue := *opt_queue
+		log.Printf("DEBUG: Raw queue value from argparse: [%s] (len=%d, bytes=%v)", rawQueue, len(rawQueue), []byte(rawQueue))
+		if rawQueue != "" {
+			// Clean up queue string: trim whitespace and trailing commas
+			queue = strings.TrimSpace(rawQueue)
+			// Remove all trailing commas (multiple passes to be sure)
+			for strings.HasSuffix(queue, ",") {
+				queue = strings.TrimSuffix(queue, ",")
+			}
+			queue = strings.TrimRight(queue, " \t")
+			// Remove spaces around commas
+			queue = strings.ReplaceAll(queue, ", ", ",")
+			queue = strings.ReplaceAll(queue, " ,", ",")
+			log.Printf("DEBUG: Queue after cleanup in main: [%s] (len=%d, bytes=%v)", queue, len(queue), []byte(queue))
+		}
 	}
 	sgeProject := ""
 	if opt_sge_project != nil {
@@ -117,9 +129,23 @@ func submitJob(scriptPath string, cpu, mem, h_vmem int, userSetMem, userSetHvmem
 		nativeSpec += fmt.Sprintf(" -l h_vmem=%dG", h_vmem)
 	}
 	// Add queue specification if provided (supports multiple queues, comma-separated)
-	// Note: queue string is already cleaned in main() before passing to submitJob
+	// Clean queue string again to ensure no trailing commas or whitespace
+	// Also remove any spaces around commas (e.g., "scv.q, sci.q" -> "scv.q,sci.q")
 	if queue != "" {
-		nativeSpec += fmt.Sprintf(" -q %s", queue)
+		// First remove all spaces
+		queue = strings.ReplaceAll(queue, " ", "")
+		// Then trim trailing commas and tabs
+		queue = strings.TrimRight(queue, ", \t")
+		// Remove spaces around commas (in case there are any left)
+		queue = strings.ReplaceAll(queue, ", ", ",")
+		queue = strings.ReplaceAll(queue, " ,", ",")
+		// Final trim
+		queue = strings.TrimSpace(queue)
+		queue = strings.TrimRight(queue, ", \t")
+		log.Printf("DEBUG: Queue in submitJob after final cleanup: [%s] (len=%d)", queue, len(queue))
+		if queue != "" {
+			nativeSpec += fmt.Sprintf(" -q %s", queue)
+		}
 	}
 	// Add SGE project specification if provided (for resource quota management)
 	if sgeProject != "" {
@@ -128,7 +154,7 @@ func submitJob(scriptPath string, cpu, mem, h_vmem int, userSetMem, userSetHvmem
 	jt.SetNativeSpecification(nativeSpec)
 
 	// Debug: log nativeSpec for troubleshooting
-	log.Printf("DEBUG: nativeSpec: %s, scriptPath: %s, scriptDir: %s", nativeSpec, scriptPath, scriptDir)
+	log.Printf("DEBUG: nativeSpec: %s, queue: [%s], scriptPath: %s, scriptDir: %s", nativeSpec, queue, scriptPath, scriptDir)
 
 	// Submit job
 	jobID, err := session.RunJob(&jt)
@@ -138,4 +164,3 @@ func submitJob(scriptPath string, cpu, mem, h_vmem int, userSetMem, userSetHvmem
 
 	return jobID, nil
 }
-
