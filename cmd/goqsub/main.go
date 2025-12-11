@@ -109,18 +109,16 @@ func submitJob(scriptPath string, cpu, mem, h_vmem int, userSetMem, userSetHvmem
 
 	// Set job template properties
 	// SetRemoteCommand sets the script path, which SGE will use as the command to execute
-	// The working directory will be automatically set to the script's directory by SGE
+	// Use absolute path to ensure SGE can find the script on compute nodes
 	jt.SetRemoteCommand(scriptPath)
 	// Set job name to file prefix, so SGE will auto-generate output files as:
 	// {scriptBaseNoExt}.o.{jobID} and {scriptBaseNoExt}.e.{jobID}
 	jt.SetJobName(scriptBaseNoExt)
+	log.Printf("DEBUG: SetRemoteCommand: %s, scriptDir: %s", scriptPath, scriptDir)
 
-	// Build nativeSpec with only SGE resource options
-	// Do NOT include -cwd or script path in nativeSpec
-	// - SetRemoteCommand already sets the script path, which SGE uses to determine working directory
-	// - SGE automatically uses the script's directory as the working directory
-	// - Output files will be generated in the script's directory: {job_name}.o.{jobID} and {job_name}.e.{jobID}
-	// - Including -cwd in nativeSpec may cause parsing errors with some DRMAA implementations
+	// Build nativeSpec with SGE resource options
+	// Include -cwd to ensure output files are generated in the script's directory
+	// SetRemoteCommand sets the script path, and -cwd ensures working directory is script's directory
 
 	// Clean queue string first
 	queueClean := ""
@@ -138,11 +136,14 @@ func submitJob(scriptPath string, cpu, mem, h_vmem int, userSetMem, userSetHvmem
 		log.Printf("DEBUG: Queue in submitJob after final cleanup: [%s] (len=%d)", queueClean, len(queueClean))
 	}
 
-	// Build nativeSpec: start with queue if provided
-	nativeSpec := ""
+	// Build nativeSpec: start with -cwd to set working directory to script's directory
+	// This ensures output files (.o and .e) are generated in the script's directory
+	nativeSpec := "-cwd"
+
+	// Add queue if provided
 	if queueClean != "" {
-		nativeSpec = fmt.Sprintf("-q %s", queueClean)
-		log.Printf("DEBUG: Queue spec: [%s]", nativeSpec)
+		nativeSpec += fmt.Sprintf(" -q %s", queueClean)
+		log.Printf("DEBUG: Queue spec: -q %s", queueClean)
 	}
 
 	// Build resource list: SGE supports comma-separated resources in a single -l option
