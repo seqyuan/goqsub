@@ -145,14 +145,25 @@ func submitJob(scriptPath string, cpu, mem, h_vmem int, userSetMem, userSetHvmem
 		log.Printf("DEBUG: Queue spec: [%s]", nativeSpec)
 	}
 
-	// Add resource specifications
-	nativeSpec += fmt.Sprintf(" -l cpu=%d", cpu)
+	// Build resource list: SGE supports comma-separated resources in a single -l option
+	// Format: -l vf=8g,h_vmem=8g,p=4
+	// Use "p" for CPU (parallel environment) instead of "cpu"
+	// Use lowercase "g" for GB unit
+	var resources []string
+	resources = append(resources, fmt.Sprintf("p=%d", cpu))
 	if userSetMem {
 		// SGE uses "vf" (virtual free memory) instead of "mem"
-		nativeSpec += fmt.Sprintf(" -l vf=%dG", mem)
+		resources = append(resources, fmt.Sprintf("vf=%dg", mem))
 	}
 	if userSetHvmem {
-		nativeSpec += fmt.Sprintf(" -l h_vmem=%dG", h_vmem)
+		resources = append(resources, fmt.Sprintf("h_vmem=%dg", h_vmem))
+	}
+
+	// Combine all resources into a single -l option
+	if len(resources) > 0 {
+		resourceSpec := strings.Join(resources, ",")
+		nativeSpec += fmt.Sprintf(" -l %s", resourceSpec)
+		log.Printf("DEBUG: Resource spec: -l %s", resourceSpec)
 	}
 	// Add SGE project specification if provided (for resource quota management)
 	if sgeProject != "" {
@@ -161,12 +172,22 @@ func submitJob(scriptPath string, cpu, mem, h_vmem int, userSetMem, userSetHvmem
 	jt.SetNativeSpecification(nativeSpec)
 
 	// Debug: log nativeSpec for troubleshooting
-	log.Printf("DEBUG: nativeSpec: %s, queue: [%s], scriptPath: %s, scriptDir: %s", nativeSpec, queue, scriptPath, scriptDir)
+	log.Printf("DEBUG: nativeSpec: %s, queue: [%s], scriptPath: %s, scriptDir: %s", nativeSpec, queueClean, scriptPath, scriptDir)
 
 	// Submit job
 	jobID, err := session.RunJob(&jt)
 	if err != nil {
-		return "", fmt.Errorf("failed to submit job: %v", err)
+		// Provide more detailed error information
+		errMsg := fmt.Sprintf("failed to submit job: %v", err)
+		if queueClean != "" {
+			errMsg += fmt.Sprintf("\nQueue specified: %s", queueClean)
+			errMsg += "\nTroubleshooting tips:"
+			errMsg += "\n  1. Check if queue exists: qconf -sql"
+			errMsg += "\n  2. Check queue status: qstat -g c"
+			errMsg += "\n  3. Check queue configuration: qconf -sq " + queueClean
+			errMsg += "\n  4. Try without --queue parameter to use default queue"
+		}
+		return "", fmt.Errorf(errMsg)
 	}
 
 	return jobID, nil
