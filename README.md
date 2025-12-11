@@ -206,7 +206,7 @@ mygoqsub --i my_script.sh
 发布新版本时，执行以下命令：
 
 ```bash
-version="v0.0.10" && \
+version="v0.0.11" && \
 git add -A && git commit -m $version && git tag $version && git push origin main && git push origin $version
 ```
 

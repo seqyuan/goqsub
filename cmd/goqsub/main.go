@@ -104,11 +104,10 @@ func submitJob(scriptPath string, cpu, mem, h_vmem int, userSetMem, userSetHvmem
 	scriptBase := filepath.Base(scriptPath)
 
 	// Set job template properties
-	// Use bash to execute the script, with absolute path
-	// This ensures SGE can find and execute the script correctly
-	// Format: bash /absolute/path/to/script.sh
-	jt.SetRemoteCommand("bash")
-	jt.SetArgs([]string{scriptPath})
+	// Use script path directly, SGE will execute it with shell when -b n is used
+	// This matches: qsub -b n L2_1_1.sh
+	// The -cwd in nativeSpec ensures the script is found in the current working directory
+	jt.SetRemoteCommand(scriptBase)
 	// Set job name to script base name (with extension), so SGE will auto-generate output files as:
 	// {scriptBase}.o.{jobID} and {scriptBase}.e.{jobID}
 	// For example: L2_1_1.sh.o.8944790 and L2_1_1.sh.e.8944790
@@ -133,9 +132,9 @@ func submitJob(scriptPath string, cpu, mem, h_vmem int, userSetMem, userSetHvmem
 		queueClean = strings.TrimRight(queueClean, ", \t")
 	}
 
-	// Build nativeSpec: start with -cwd to set working directory to script's directory
-	// This ensures output files (.o and .e) are generated in the script's directory
-	nativeSpec := "-cwd"
+	// Build nativeSpec matching: qsub -pe smp 4 -l h_vmem=10g -cwd -b n L2_1_1.sh
+	// Start with parallel environment, -cwd, and -b n (non-binary mode, use shell)
+	nativeSpec := fmt.Sprintf("-pe smp %d -cwd -b n", cpu)
 
 	// Add queue if provided
 	if queueClean != "" {
@@ -143,11 +142,9 @@ func submitJob(scriptPath string, cpu, mem, h_vmem int, userSetMem, userSetHvmem
 	}
 
 	// Build resource list: SGE supports comma-separated resources in a single -l option
-	// Format: -l vf=8g,h_vmem=8g,p=4
-	// Use "p" for CPU (parallel environment) instead of "cpu"
+	// Format: -l vf=8g,h_vmem=8g
 	// Use lowercase "g" for GB unit
 	var resources []string
-	resources = append(resources, fmt.Sprintf("p=%d", cpu))
 	
 	if userSetMem {
 		// SGE uses "vf" (virtual free memory) instead of "mem"
