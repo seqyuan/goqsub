@@ -109,8 +109,10 @@ goqsub --i test_shell2qsub.sh --cpu 4 --mem 8 --queue sca,sci.q -P bioinformatic
 
 **重要说明**：
 - `--mem` 和 `--h_vmem` 参数只有在用户显式设置时，才会在 DRMAA 投递时使用
-- 如果只设置了 `--mem`，DRMAA 投递时只包含 `-l mem=XG`，不包含 `-l h_vmem`
-- 如果只设置了 `--h_vmem`，DRMAA 投递时只包含 `-l h_vmem=XG`，不包含 `-l mem`
+- `--mem` 对应 SGE 的 `vf` 资源（虚拟内存），DRMAA 投递时使用 `-l vf=XG`
+- `--h_vmem` 对应 SGE 的 `h_vmem` 资源（硬虚拟内存限制），DRMAA 投递时使用 `-l h_vmem=XG`
+- 如果只设置了 `--mem`，DRMAA 投递时只包含 `-l vf=XG`，不包含 `-l h_vmem`
+- 如果只设置了 `--h_vmem`，DRMAA 投递时只包含 `-l h_vmem=XG`，不包含 `-l vf`
 - 如果都不设置，DRMAA 投递时不会包含内存相关参数
 - `--queue` 默认值为 `scv.q,sci.q`，支持多个队列，用逗号分隔
 - `-P/--sge-project` 用于 SGE 资源配额管理，如果未设置则不在 DRMAA 中使用 `-P` 参数
@@ -204,6 +206,6 @@ mygoqsub --i my_script.sh
 发布新版本时，执行以下命令：
 
 ```bash
-version="v0.0.2" && \
+version="v0.0.3" && \
 git add -A && git commit -m $version && git tag $version && git push origin main && git push origin $version
 ```

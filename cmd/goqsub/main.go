@@ -121,31 +121,38 @@ func submitJob(scriptPath string, cpu, mem, h_vmem int, userSetMem, userSetHvmem
 	// - SGE automatically uses the script's directory as the working directory
 	// - Output files will be generated in the script's directory: {job_name}.o.{jobID} and {job_name}.e.{jobID}
 	// - Including -cwd in nativeSpec may cause parsing errors with some DRMAA implementations
-	nativeSpec := fmt.Sprintf("-l cpu=%d", cpu)
+
+	// Clean queue string first
+	queueClean := ""
+	if queue != "" {
+		// First remove all spaces
+		queueClean = strings.ReplaceAll(queue, " ", "")
+		// Then trim trailing commas and tabs
+		queueClean = strings.TrimRight(queueClean, ", \t")
+		// Remove spaces around commas (in case there are any left)
+		queueClean = strings.ReplaceAll(queueClean, ", ", ",")
+		queueClean = strings.ReplaceAll(queueClean, " ,", ",")
+		// Final trim
+		queueClean = strings.TrimSpace(queueClean)
+		queueClean = strings.TrimRight(queueClean, ", \t")
+		log.Printf("DEBUG: Queue in submitJob after final cleanup: [%s] (len=%d)", queueClean, len(queueClean))
+	}
+
+	// Build nativeSpec: start with queue if provided
+	nativeSpec := ""
+	if queueClean != "" {
+		nativeSpec = fmt.Sprintf("-q %s", queueClean)
+		log.Printf("DEBUG: Queue spec: [%s]", nativeSpec)
+	}
+
+	// Add resource specifications
+	nativeSpec += fmt.Sprintf(" -l cpu=%d", cpu)
 	if userSetMem {
-		nativeSpec += fmt.Sprintf(" -l mem=%dG", mem)
+		// SGE uses "vf" (virtual free memory) instead of "mem"
+		nativeSpec += fmt.Sprintf(" -l vf=%dG", mem)
 	}
 	if userSetHvmem {
 		nativeSpec += fmt.Sprintf(" -l h_vmem=%dG", h_vmem)
-	}
-	// Add queue specification if provided (supports multiple queues, comma-separated)
-	// Clean queue string again to ensure no trailing commas or whitespace
-	// Also remove any spaces around commas (e.g., "scv.q, sci.q" -> "scv.q,sci.q")
-	if queue != "" {
-		// First remove all spaces
-		queue = strings.ReplaceAll(queue, " ", "")
-		// Then trim trailing commas and tabs
-		queue = strings.TrimRight(queue, ", \t")
-		// Remove spaces around commas (in case there are any left)
-		queue = strings.ReplaceAll(queue, ", ", ",")
-		queue = strings.ReplaceAll(queue, " ,", ",")
-		// Final trim
-		queue = strings.TrimSpace(queue)
-		queue = strings.TrimRight(queue, ", \t")
-		log.Printf("DEBUG: Queue in submitJob after final cleanup: [%s] (len=%d)", queue, len(queue))
-		if queue != "" {
-			nativeSpec += fmt.Sprintf(" -q %s", queue)
-		}
 	}
 	// Add SGE project specification if provided (for resource quota management)
 	if sgeProject != "" {
