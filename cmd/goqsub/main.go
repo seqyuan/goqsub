@@ -69,14 +69,15 @@ func main() {
 		log.Fatalf("Error: Script file does not exist: %s", scriptPath)
 	}
 
-	// Get absolute path
+	// Get absolute path and directory
 	absScriptPath, err := filepath.Abs(scriptPath)
 	if err != nil {
 		log.Fatalf("Error: Could not get absolute path for script: %v", err)
 	}
+	absScriptDir := filepath.Dir(absScriptPath)
 
 	// Submit job
-	jobID, err := submitJob(absScriptPath, cpu, mem, h_vmem, userSetMem, userSetHvmem, queue, sgeProject)
+	jobID, err := submitJob(absScriptPath, absScriptDir, cpu, mem, h_vmem, userSetMem, userSetHvmem, queue, sgeProject)
 	if err != nil {
 		log.Fatalf("Error submitting job: %v", err)
 	}
@@ -85,7 +86,7 @@ func main() {
 }
 
 // submitJob submits a single job to qsub SGE system using DRMAA
-func submitJob(scriptPath string, cpu, mem, h_vmem int, userSetMem, userSetHvmem bool, queue, sgeProject string) (string, error) {
+func submitJob(scriptPath, scriptDir string, cpu, mem, h_vmem int, userSetMem, userSetHvmem bool, queue, sgeProject string) (string, error) {
 	// Create DRMAA session
 	session, err := drmaa.MakeSession()
 	if err != nil {
@@ -104,10 +105,10 @@ func submitJob(scriptPath string, cpu, mem, h_vmem int, userSetMem, userSetHvmem
 	scriptBase := filepath.Base(scriptPath)
 
 	// Set job template properties
-	// Use script path directly, SGE will execute it with shell when -b n is used
-	// This matches: qsub -b n L2_1_1.sh
-	// The -cwd in nativeSpec ensures the script is found in the current working directory
-	jt.SetRemoteCommand(scriptBase)
+	// Use absolute script path to ensure SGE can find the script
+	// With -cwd, SGE will use scriptDir as working directory, but we still need absolute path for the script
+	// This matches: qsub -pe smp 4 -l h_vmem=10g -cwd -b n /absolute/path/to/L2_1_1.sh
+	jt.SetRemoteCommand(scriptPath)
 	// Set job name to script base name (with extension), so SGE will auto-generate output files as:
 	// {scriptBase}.o.{jobID} and {scriptBase}.e.{jobID}
 	// For example: L2_1_1.sh.o.8944790 and L2_1_1.sh.e.8944790
