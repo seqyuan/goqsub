@@ -46,7 +46,6 @@ func main() {
 	queue := ""
 	if opt_queue != nil {
 		rawQueue := *opt_queue
-		log.Printf("DEBUG: Raw queue value from argparse: [%s] (len=%d, bytes=%v)", rawQueue, len(rawQueue), []byte(rawQueue))
 		if rawQueue != "" {
 			// Clean up queue string: trim whitespace and trailing commas
 			queue = strings.TrimSpace(rawQueue)
@@ -58,7 +57,6 @@ func main() {
 			// Remove spaces around commas
 			queue = strings.ReplaceAll(queue, ", ", ",")
 			queue = strings.ReplaceAll(queue, " ,", ",")
-			log.Printf("DEBUG: Queue after cleanup in main: [%s] (len=%d, bytes=%v)", queue, len(queue), []byte(queue))
 		}
 	}
 	sgeProject := ""
@@ -83,7 +81,7 @@ func main() {
 		log.Fatalf("Error submitting job: %v", err)
 	}
 
-	fmt.Printf("Job submitted successfully. Job ID: %s\n", jobID)
+	fmt.Printf("%s\n", jobID)
 }
 
 // submitJob submits a single job to qsub SGE system using DRMAA
@@ -105,7 +103,6 @@ func submitJob(scriptPath string, cpu, mem, h_vmem int, userSetMem, userSetHvmem
 	// Get directory and base name of script
 	scriptDir := filepath.Dir(scriptPath)
 	scriptBase := filepath.Base(scriptPath)
-	scriptBaseNoExt := strings.TrimSuffix(scriptBase, filepath.Ext(scriptBase))
 
 	// Set job template properties
 	// Use bash to execute the script, with absolute path
@@ -113,10 +110,10 @@ func submitJob(scriptPath string, cpu, mem, h_vmem int, userSetMem, userSetHvmem
 	// Format: bash /absolute/path/to/script.sh
 	jt.SetRemoteCommand("bash")
 	jt.SetArgs([]string{scriptPath})
-	// Set job name to file prefix, so SGE will auto-generate output files as:
-	// {scriptBaseNoExt}.o.{jobID} and {scriptBaseNoExt}.e.{jobID}
-	jt.SetJobName(scriptBaseNoExt)
-	log.Printf("DEBUG: SetRemoteCommand: bash, SetArgs: [%s], scriptDir: %s", scriptPath, scriptDir)
+	// Set job name to script base name (with extension), so SGE will auto-generate output files as:
+	// {scriptBase}.o.{jobID} and {scriptBase}.e.{jobID}
+	// For example: L2_1_1.sh.o.8944790 and L2_1_1.sh.e.8944790
+	jt.SetJobName(scriptBase)
 
 	// Build nativeSpec with SGE resource options
 	// Include -cwd to ensure output files are generated in the script's directory
@@ -135,7 +132,6 @@ func submitJob(scriptPath string, cpu, mem, h_vmem int, userSetMem, userSetHvmem
 		// Final trim
 		queueClean = strings.TrimSpace(queueClean)
 		queueClean = strings.TrimRight(queueClean, ", \t")
-		log.Printf("DEBUG: Queue in submitJob after final cleanup: [%s] (len=%d)", queueClean, len(queueClean))
 	}
 
 	// Build nativeSpec: start with -cwd to set working directory to script's directory
@@ -145,7 +141,6 @@ func submitJob(scriptPath string, cpu, mem, h_vmem int, userSetMem, userSetHvmem
 	// Add queue if provided
 	if queueClean != "" {
 		nativeSpec += fmt.Sprintf(" -q %s", queueClean)
-		log.Printf("DEBUG: Queue spec: -q %s", queueClean)
 	}
 
 	// Build resource list: SGE supports comma-separated resources in a single -l option
@@ -167,16 +162,12 @@ func submitJob(scriptPath string, cpu, mem, h_vmem int, userSetMem, userSetHvmem
 	if len(resources) > 0 {
 		resourceSpec := strings.Join(resources, ",")
 		nativeSpec += fmt.Sprintf(" -l %s", resourceSpec)
-		log.Printf("DEBUG: Resource spec: -l %s", resourceSpec)
 	}
 	// Add SGE project specification if provided (for resource quota management)
 	if sgeProject != "" {
 		nativeSpec += fmt.Sprintf(" -P %s", sgeProject)
 	}
 	jt.SetNativeSpecification(nativeSpec)
-
-	// Debug: log nativeSpec for troubleshooting
-	log.Printf("DEBUG: nativeSpec: %s, queue: [%s], scriptPath: %s, scriptDir: %s", nativeSpec, queueClean, scriptPath, scriptDir)
 
 	// Submit job
 	jobID, err := session.RunJob(&jt)
