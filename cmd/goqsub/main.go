@@ -108,13 +108,15 @@ func submitJob(scriptPath string, cpu, mem, h_vmem int, userSetMem, userSetHvmem
 	scriptBaseNoExt := strings.TrimSuffix(scriptBase, filepath.Ext(scriptBase))
 
 	// Set job template properties
-	// SetRemoteCommand sets the script path, which SGE will use as the command to execute
-	// Use absolute path to ensure SGE can find the script on compute nodes
-	jt.SetRemoteCommand(scriptPath)
+	// Use bash to execute the script, with absolute path
+	// This ensures SGE can find and execute the script correctly
+	// Format: bash /absolute/path/to/script.sh
+	jt.SetRemoteCommand("bash")
+	jt.SetArgs([]string{scriptPath})
 	// Set job name to file prefix, so SGE will auto-generate output files as:
 	// {scriptBaseNoExt}.o.{jobID} and {scriptBaseNoExt}.e.{jobID}
 	jt.SetJobName(scriptBaseNoExt)
-	log.Printf("DEBUG: SetRemoteCommand: %s, scriptDir: %s", scriptPath, scriptDir)
+	log.Printf("DEBUG: SetRemoteCommand: bash, SetArgs: [%s], scriptDir: %s", scriptPath, scriptDir)
 
 	// Build nativeSpec with SGE resource options
 	// Include -cwd to ensure output files are generated in the script's directory
