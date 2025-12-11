@@ -154,6 +154,7 @@ func submitJob(scriptPath string, cpu, mem, h_vmem int, userSetMem, userSetHvmem
 	// Use lowercase "g" for GB unit
 	var resources []string
 	resources = append(resources, fmt.Sprintf("p=%d", cpu))
+	
 	if userSetMem {
 		// SGE uses "vf" (virtual free memory) instead of "mem"
 		resources = append(resources, fmt.Sprintf("vf=%dg", mem))
