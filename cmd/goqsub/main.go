@@ -44,12 +44,14 @@ func main() {
 	mem := *opt_mem
 	h_vmem := *opt_h_vmem
 	queue := ""
-	if opt_queue != nil {
-		queue = *opt_queue
+	if opt_queue != nil && *opt_queue != "" {
+		// Clean up queue string: trim whitespace and trailing commas
+		queue = strings.TrimSpace(*opt_queue)
+		queue = strings.TrimRight(queue, ", \t")
 	}
 	sgeProject := ""
 	if opt_sge_project != nil {
-		sgeProject = *opt_sge_project
+		sgeProject = strings.TrimSpace(*opt_sge_project)
 	}
 
 	// Validate script file exists
@@ -115,12 +117,9 @@ func submitJob(scriptPath string, cpu, mem, h_vmem int, userSetMem, userSetHvmem
 		nativeSpec += fmt.Sprintf(" -l h_vmem=%dG", h_vmem)
 	}
 	// Add queue specification if provided (supports multiple queues, comma-separated)
+	// Note: queue string is already cleaned in main() before passing to submitJob
 	if queue != "" {
-		// Trim any trailing commas or whitespace from queue string
-		queue = strings.TrimRight(strings.TrimSpace(queue), ", \t")
-		if queue != "" {
-			nativeSpec += fmt.Sprintf(" -q %s", queue)
-		}
+		nativeSpec += fmt.Sprintf(" -q %s", queue)
 	}
 	// Add SGE project specification if provided (for resource quota management)
 	if sgeProject != "" {
