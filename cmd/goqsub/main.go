@@ -100,8 +100,7 @@ func submitJob(scriptPath string, cpu, mem, h_vmem int, userSetMem, userSetHvmem
 	}
 	defer session.DeleteJobTemplate(&jt)
 
-	// Get directory and base name of script
-	scriptDir := filepath.Dir(scriptPath)
+	// Get base name of script
 	scriptBase := filepath.Base(scriptPath)
 
 	// Set job template properties
