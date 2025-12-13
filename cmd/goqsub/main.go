@@ -1,11 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/akamensky/argparse"
 	"github.com/dgruber/drmaa"
@@ -76,6 +78,16 @@ func main() {
 	}
 	absScriptDir := filepath.Dir(absScriptPath)
 
+	// #region agent log
+	// Debug: Log script path and directory
+	debugLog("main.go:77", "Script path resolution", map[string]interface{}{
+		"scriptPath":    scriptPath,
+		"absScriptPath": absScriptPath,
+		"absScriptDir":  absScriptDir,
+		"hypothesisId":  "A",
+	})
+	// #endregion
+
 	// Submit job
 	jobID, err := submitJob(absScriptPath, absScriptDir, cpu, mem, h_vmem, userSetMem, userSetHvmem, queue, sgeProject)
 	if err != nil {
@@ -87,6 +99,30 @@ func main() {
 
 // submitJob submits a single job to qsub SGE system using DRMAA
 func submitJob(scriptPath, scriptDir string, cpu, mem, h_vmem int, userSetMem, userSetHvmem bool, queue, sgeProject string) (string, error) {
+	// Save current working directory and switch to script directory
+	// This ensures that -cwd will set SGE's working directory to script directory
+	originalDir, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("failed to get current working directory: %v", err)
+	}
+
+	// Switch to script directory before submitting job
+	err = os.Chdir(scriptDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to change to script directory %s: %v", scriptDir, err)
+	}
+	// Restore original directory after job submission
+	defer os.Chdir(originalDir)
+
+	// #region agent log
+	// Debug: Log directory change
+	debugLog("main.go:101", "Directory change for job submission", map[string]interface{}{
+		"originalDir":  originalDir,
+		"scriptDir":    scriptDir,
+		"hypothesisId": "F",
+	})
+	// #endregion
+
 	// Create DRMAA session
 	session, err := drmaa.MakeSession()
 	if err != nil {
@@ -104,19 +140,28 @@ func submitJob(scriptPath, scriptDir string, cpu, mem, h_vmem int, userSetMem, u
 	// Get base name of script
 	scriptBase := filepath.Base(scriptPath)
 
+	// #region agent log
+	// Debug: Log script base name and current working directory
+	wd, _ := os.Getwd()
+	debugLog("main.go:105", "Script base name and working directory", map[string]interface{}{
+		"scriptBase":   scriptBase,
+		"scriptPath":   scriptPath,
+		"scriptDir":    scriptDir,
+		"currentDir":   wd,
+		"hypothesisId": "B",
+	})
+	// #endregion
+
 	// Set job template properties
 	// Use absolute script path to ensure SGE can find the script
-	// With -cwd, SGE will use scriptDir as working directory, but we still need absolute path for the script
-	// This matches: qsub -pe smp 4 -l h_vmem=10g -cwd -b n /absolute/path/to/L2_1_1.sh
 	jt.SetRemoteCommand(scriptPath)
-	// Set job name to script base name (with extension), so SGE will auto-generate output files as:
-	// {scriptBase}.o.{jobID} and {scriptBase}.e.{jobID}
-	// For example: L2_1_1.sh.o.8944790 and L2_1_1.sh.e.8944790
+	// Set job name to script base name (with extension)
+	// SGE will automatically create output files with default naming: job-name.ojob-id and job-name.ejob-id
 	jt.SetJobName(scriptBase)
 
 	// Build nativeSpec with SGE resource options
-	// Include -cwd to ensure output files are generated in the script's directory
-	// SetRemoteCommand sets the script path, and -cwd ensures working directory is script's directory
+	// Use -cwd to set working directory to current directory (which is now script directory)
+	// This ensures output files are generated in the script's directory
 
 	// Clean queue string first
 	queueClean := ""
@@ -134,8 +179,24 @@ func submitJob(scriptPath, scriptDir string, cpu, mem, h_vmem int, userSetMem, u
 	}
 
 	// Build nativeSpec matching: qsub -pe smp 4 -l h_vmem=10g -cwd -b n L2_1_1.sh
+	// Use -cwd to set working directory to current directory (which is now script directory)
+	// SGE will automatically create output files in the working directory with default naming:
+	// job-name.ojob-id and job-name.ejob-id (where job-name is set via SetJobName)
+	// This ensures output files are generated in the script's directory
 	// Start with parallel environment, -cwd, and -b n (non-binary mode, use shell)
 	nativeSpec := fmt.Sprintf("-pe smp %d -cwd -b n", cpu)
+
+	// #region agent log
+	// Debug: Log initial nativeSpec with -cwd
+	currentDir, _ := os.Getwd()
+	debugLog("main.go:187", "Initial nativeSpec with -cwd", map[string]interface{}{
+		"nativeSpec":   nativeSpec,
+		"scriptDir":    scriptDir,
+		"scriptBase":   scriptBase,
+		"currentDir":   currentDir,
+		"hypothesisId": "C",
+	})
+	// #endregion
 
 	// Add queue if provided
 	if queueClean != "" {
@@ -146,7 +207,7 @@ func submitJob(scriptPath, scriptDir string, cpu, mem, h_vmem int, userSetMem, u
 	// Format: -l vf=8g,h_vmem=8g
 	// Use lowercase "g" for GB unit
 	var resources []string
-	
+
 	if userSetMem {
 		// SGE uses "vf" (virtual free memory) instead of "mem"
 		resources = append(resources, fmt.Sprintf("vf=%dg", mem))
@@ -164,10 +225,33 @@ func submitJob(scriptPath, scriptDir string, cpu, mem, h_vmem int, userSetMem, u
 	if sgeProject != "" {
 		nativeSpec += fmt.Sprintf(" -P %s", sgeProject)
 	}
+
+	// #region agent log
+	// Debug: Log final nativeSpec before setting
+	debugLog("main.go:167", "Final nativeSpec before SetNativeSpecification", map[string]interface{}{
+		"nativeSpec":   nativeSpec,
+		"scriptDir":    scriptDir,
+		"scriptBase":   scriptBase,
+		"hypothesisId": "D",
+	})
+	// #endregion
+
 	jt.SetNativeSpecification(nativeSpec)
 
 	// Submit job
 	jobID, err := session.RunJob(&jt)
+
+	// #region agent log
+	// Debug: Log job submission result
+	debugLog("main.go:170", "Job submission result", map[string]interface{}{
+		"jobID":        jobID,
+		"error":        fmt.Sprintf("%v", err),
+		"scriptDir":    scriptDir,
+		"scriptBase":   scriptBase,
+		"hypothesisId": "E",
+	})
+	// #endregion
+
 	if err != nil {
 		// Provide more detailed error information
 		errMsg := fmt.Sprintf("failed to submit job: %v", err)
@@ -183,4 +267,27 @@ func submitJob(scriptPath, scriptDir string, cpu, mem, h_vmem int, userSetMem, u
 	}
 
 	return jobID, nil
+}
+
+// debugLog writes a debug log entry to the log file
+func debugLog(location, message string, data map[string]interface{}) {
+	logPath := "/Volumes/data/github/seqyuan/goqsub/.cursor/debug.log"
+	logEntry := map[string]interface{}{
+		"timestamp": time.Now().UnixMilli(),
+		"location":  location,
+		"message":   message,
+		"sessionId": "debug-session",
+		"runId":     "run1",
+		"data":      data,
+	}
+	if hypothesisId, ok := data["hypothesisId"].(string); ok {
+		logEntry["hypothesisId"] = hypothesisId
+	}
+	logJSON, _ := json.Marshal(logEntry)
+	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	f.WriteString(string(logJSON) + "\n")
 }
